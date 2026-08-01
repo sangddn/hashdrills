@@ -4,6 +4,9 @@ All notable changes to Hashdrills will be documented in this file.
 
 ## Unreleased
 
+- Add a rerunnable `hashdrills setup` wizard with persistent non-secret model
+  defaults, readiness checks, connection tests, and deterministic reset and
+  configuration flags.
 - Default generation and answer evaluation to the benchmarked
   `gpt-5.5-2026-04-23` model with `none` reasoning effort while keeping custom
   providers free of implicit reasoning options.

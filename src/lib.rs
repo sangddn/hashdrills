@@ -17,6 +17,7 @@
 pub mod archive;
 pub mod auth;
 pub mod cli;
+pub mod config;
 pub mod error;
 pub mod evals;
 pub mod fsrs;
@@ -24,6 +25,7 @@ pub mod media;
 pub mod model;
 pub mod render;
 pub mod selection;
+pub mod setup;
 pub mod spec;
 pub mod static_assets;
 pub mod storage;
