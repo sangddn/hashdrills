@@ -1451,6 +1451,35 @@ A:
     }
 
     #[test]
+    fn bundled_probability_example_preserves_latex_around_generation() -> TestResult {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("example")
+            .join("Conditional-Probability.md");
+        let specs = parse_path(&path)?;
+        assert_eq!(specs.len(), 1);
+
+        let spec = &specs[0];
+        assert_eq!(spec.question.directive_count(), 4);
+        assert_eq!(spec.answer.directive_count(), 1);
+        assert!(
+            spec.goal
+                .as_deref()
+                .is_some_and(|goal| goal.contains(r"$P(A \mid B)=\frac{n(A \cap B)}{n(B)}$"))
+        );
+
+        let rendered = spec.question.render(&[
+            "4".to_string(),
+            "7".to_string(),
+            "2".to_string(),
+            "9".to_string(),
+        ])?;
+        assert!(rendered.contains(r"| | $B$ | $\neg B$ |"));
+        assert!(rendered.contains("$$\nP(A \\mid B)\n$$"));
+        assert!(!rendered.contains("{{"));
+        Ok(())
+    }
+
+    #[test]
     fn trims_and_accepts_hashcards_source_schemes() -> TestResult {
         let directory = TempDir::new()?;
         let cases = [

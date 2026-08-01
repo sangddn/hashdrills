@@ -842,13 +842,14 @@ mod tests {
     fn renders_gfm_and_math() {
         let (directory, spec) = fixture();
         let markdown = concat!(
-            "| A | B |\n|---|---|\n| 1 | 2 |\n\n",
+            "| $A$ | $\\neg B$ |\n|---|---|\n| 1 | 2 |\n\n",
             "~~gone~~\n\n- [x] done -- yes\n\n",
             "$x < y$ and \\(a+b\\)\n\n",
             "$$x^2$$\n\n\\[y^2\\]",
         );
         let html = markdown_to_html(markdown, directory.path(), &spec);
         assert!(html.contains("<table>"));
+        assert!(html.contains("<span class=\"math math-inline\">\\neg B</span>"));
         assert!(html.contains("<del>gone</del>"));
         assert!(html.contains("type=\"checkbox\" checked=\"\""));
         assert!(html.contains('–'));

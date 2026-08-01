@@ -67,7 +67,8 @@ use crate::types::performance::Performance;
 use crate::web::ServerConfig;
 use crate::web::start_server;
 
-const DEFAULT_MODEL: &str = "gpt-5.6-luna";
+const DEFAULT_MODEL: &str = "gpt-5.5-2026-04-23";
+const DEFAULT_MODEL_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::None;
 const DEFAULT_JUDGE_MODEL: &str = "gpt-5.6-sol";
 const MAX_CUSTOMIZATION_FILE_BYTES: u64 = 64 * 1024;
 
@@ -107,7 +108,7 @@ impl From<SelectionArgs> for Selection {
 /// authority for their own settings.
 #[derive(Args, Clone, Debug)]
 struct CommonLlmArgs {
-    /// Fallback model for generation and evaluation.
+    /// Fallback model for generation and evaluation; the built-in default uses `none` reasoning.
     #[arg(long, default_value = DEFAULT_MODEL)]
     model: String,
     /// Provider option passed as process arguments to both stages; never put credentials here.
@@ -133,7 +134,7 @@ struct GenerationLlmArgs {
     /// Model used only to generate concrete drill instances.
     #[arg(long)]
     generation_model: Option<String>,
-    /// Optional reasoning effort used only for generation.
+    /// Override the reasoning effort used only for generation.
     #[arg(long)]
     generation_reasoning_effort: Option<ReasoningEffort>,
     /// Provider option passed as process arguments only for generation.
@@ -155,7 +156,7 @@ struct EvaluationLlmArgs {
     /// Model used only to evaluate submitted answers.
     #[arg(long)]
     evaluation_model: Option<String>,
-    /// Optional reasoning effort used only for evaluation.
+    /// Override the reasoning effort used only for evaluation.
     #[arg(long)]
     evaluation_reasoning_effort: Option<ReasoningEffort>,
     /// Provider option passed as process arguments only for evaluation.
@@ -871,6 +872,8 @@ fn build_scoped_backend(
     generation: Option<GenerationLlmArgs>,
     evaluation: Option<EvaluationLlmArgs>,
 ) -> Fallible<LlmBackend> {
+    let generation_enabled = generation.is_some();
+    let evaluation_enabled = evaluation.is_some();
     let CommonLlmArgs {
         model,
         llm_option,
@@ -880,7 +883,7 @@ fn build_scoped_backend(
     } = common;
     let GenerationLlmArgs {
         generation_model,
-        generation_reasoning_effort,
+        mut generation_reasoning_effort,
         generation_llm_option,
         generation_instructions,
         generation_instructions_file,
@@ -888,7 +891,7 @@ fn build_scoped_backend(
     } = generation.unwrap_or_default();
     let EvaluationLlmArgs {
         evaluation_model,
-        evaluation_reasoning_effort,
+        mut evaluation_reasoning_effort,
         evaluation_llm_option,
         evaluation_instructions,
         evaluation_instructions_file,
@@ -931,6 +934,21 @@ fn build_scoped_backend(
             "--evaluation-reasoning-effort conflicts with an evaluation reasoning_effort LLM option",
         );
     }
+
+    generation_reasoning_effort = effective_reasoning_effort(
+        generation_enabled,
+        generation_model.as_deref().unwrap_or(model.as_str()),
+        generation_reasoning_effort,
+        &llm_option,
+        &generation_llm_option,
+    );
+    evaluation_reasoning_effort = effective_reasoning_effort(
+        evaluation_enabled,
+        evaluation_model.as_deref().unwrap_or(model.as_str()),
+        evaluation_reasoning_effort,
+        &llm_option,
+        &evaluation_llm_option,
+    );
 
     let generation_instructions = resolve_inline_or_file(
         generation_instructions,
@@ -1012,6 +1030,27 @@ fn build_scoped_backend(
         backend = backend.with_evaluation_prompt_template(value);
     }
     Ok(backend)
+}
+
+fn effective_reasoning_effort(
+    stage_enabled: bool,
+    model: &str,
+    explicit: Option<ReasoningEffort>,
+    common_options: &[LlmOption],
+    stage_options: &[LlmOption],
+) -> Option<ReasoningEffort> {
+    if explicit.is_some()
+        || !stage_enabled
+        || model != DEFAULT_MODEL
+        || common_options
+            .iter()
+            .chain(stage_options)
+            .any(|option| option.key() == "reasoning_effort")
+    {
+        explicit
+    } else {
+        Some(DEFAULT_MODEL_REASONING_EFFORT)
+    }
 }
 
 fn validate_model_argument(flag: &str, value: &str) -> Fallible<()> {
@@ -1507,7 +1546,7 @@ mod tests {
     }
 
     #[test]
-    fn omitted_reasoning_flags_do_not_set_provider_options() {
+    fn omitted_reasoning_flags_remain_distinct_at_parse_time() {
         let cli = Cli::try_parse_from(["hashdrills", "drill", "drills.md"]).unwrap();
         match cli.command {
             Command::Drill { llm, .. } => {
@@ -1517,6 +1556,32 @@ mod tests {
             }
             command => panic!("unexpected command: {command:?}"),
         }
+    }
+
+    #[test]
+    fn benchmarked_default_gets_none_without_leaking_to_other_models() {
+        assert_eq!(
+            effective_reasoning_effort(true, DEFAULT_MODEL, None, &[], &[]),
+            Some(ReasoningEffort::None)
+        );
+        assert_eq!(
+            effective_reasoning_effort(true, "local-model", None, &[], &[]),
+            None
+        );
+        assert_eq!(
+            effective_reasoning_effort(false, DEFAULT_MODEL, None, &[], &[]),
+            None
+        );
+        assert_eq!(
+            effective_reasoning_effort(true, DEFAULT_MODEL, Some(ReasoningEffort::Low), &[], &[],),
+            Some(ReasoningEffort::Low)
+        );
+
+        let provider_override = LlmOption::new("reasoning_effort", "high").unwrap();
+        assert_eq!(
+            effective_reasoning_effort(true, DEFAULT_MODEL, None, &[provider_override], &[],),
+            None
+        );
     }
 
     #[test]
