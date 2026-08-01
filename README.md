@@ -71,8 +71,7 @@ source = "https://developer.mozilla.org/en-US/docs/Glossary/Idempotent"
 ```
 
 - `name` sets the deck name shown in the app.
-- `source` adds a source link. It may use `http://`, `https://`, or
-  `obsidian://`.
+- `source` adds a source link beside the deck name.
 
 Hashdrills does not fetch the source page or send it to the model.
 
@@ -80,7 +79,7 @@ Each drill has `Q:` and `A:`, with an optional `G:` before them:
 
 | Field | Meaning |
 | --- | --- |
-| `G:` | Optional goal. Collapsed below the question while answering. |
+| `G:` | Optional goal. Hidden while answering; expandable on the result screen. |
 | `Q:` | The question shown to the learner. |
 | `A:` | The expected answer or grading criteria. |
 
