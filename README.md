@@ -1,13 +1,20 @@
 # Hashdrills
 
-Plaintext spaced repetition for questions that should change.
+Plaintext spaced repetition for questions that should change. Inspired by and partially derived from [Hashcards](https://github.com/eudoxia0/hashcards) by [Fernando Borretti](https://borretti.me/article/hashcards-plain-text-spaced-repetition).
 
-Flashcards repeat a fixed prompt. Hashdrills keeps the skill fixed and asks an
-LLM to generate a fresh question each time. You still write the goal, the
-question pattern, and the grading criteria.
+Flashcards repeat a fixed prompt, making a stable fact or response available. 
+Hashdrills keeps the skill fixed and asks an LLM to generate a fresh question each time. 
+You write the goal, the question pattern, and the grading criteria.
 
 > **Status:** Hashdrills is an experimental v0.1 release. Its file format and
 > command-line interface may change.
+
+A few principles:
+- **Local-first.** Your drills, schedule, and history live on your machine.
+- **Markdown.** Write, search, version, back up, and move drills as Markdown files.
+- **Model-independent.** Use any provider supported by [`llm`](https://github.com/simonw/LLM), including local models.
+- **Inspectability & Control.** Generated questions are disposable by default, sessions can be exported, and AI judgments can be overridden.
+
 
 ## Quick start
 
