@@ -23,17 +23,16 @@ llm models --schemas
 ```
 
 `--model` selects the answer evaluator or generation candidate and defaults to
-`gpt-5.6-luna`. It does not select the generation-quality judge. Answer runs
+`gpt-5.5-2026-04-23` with reasoning effort `none`. It does not select the
+generation-quality judge. Answer runs
 accept `--evaluation-model`, `--evaluation-reasoning-effort`, and repeatable
 `--evaluation-llm-option KEY=VALUE`; generation runs use the corresponding
 `--generation-*` flags. Shared `--llm-option`, `--schema-mode native|prompt`,
 `--llm-executable`, and `--llm-timeout` controls work in both. Hashdrills does
-not register missing models: upgrade `llm`, or install and configure the
-appropriate provider plugin, if an intended model is absent. At this release,
-stable PyPI `llm` 0.31.1 registers neither the Luna candidate default nor the
-Sol judge default, so a stable upgrade alone is insufficient: install a
-version or provider that registers them, or pass listed schema-capable IDs via
-`--model` and, for judged generation, `--judge-model`.
+not register missing models: upgrade `llm`, install the appropriate provider
+plugin, or pass another listed schema-capable model. The default Sol judge may
+not be available in every `llm` installation; override it with `--judge-model`
+when needed.
 
 Both commands accept:
 
