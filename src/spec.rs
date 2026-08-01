@@ -1509,7 +1509,11 @@ A:
             assert_eq!(error.message, expected_message);
             assert_eq!(error.path, path.canonicalize()?);
             assert_eq!((error.line, error.column), (3, 3));
-            assert!(error.to_string().contains(&path.display().to_string()));
+            assert!(
+                error
+                    .to_string()
+                    .contains(&error.path.display().to_string())
+            );
         }
         Ok(())
     }

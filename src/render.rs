@@ -631,15 +631,23 @@ fn escape_html_attribute(text: &str) -> String {
 }
 
 fn percent_encode_path(path: &Path) -> Result<String, MediaError> {
-    let path = path.to_str().ok_or(MediaError::NonUtf8Path)?;
-    let mut encoded = String::with_capacity(path.len());
-    for byte in path.as_bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/') {
-            encoded.push(char::from(*byte));
-        } else {
-            encoded.push('%');
-            encoded.push(hex_digit(byte >> 4));
-            encoded.push(hex_digit(byte & 0x0f));
+    let mut encoded = String::new();
+    for component in path.components() {
+        let Component::Normal(segment) = component else {
+            return Err(MediaError::OutsideCollection);
+        };
+        let segment = segment.to_str().ok_or(MediaError::NonUtf8Path)?;
+        if !encoded.is_empty() {
+            encoded.push('/');
+        }
+        for byte in segment.as_bytes() {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+                encoded.push(char::from(*byte));
+            } else {
+                encoded.push('%');
+                encoded.push(hex_digit(byte >> 4));
+                encoded.push(hex_digit(byte & 0x0f));
+            }
         }
     }
     Ok(encoded)
