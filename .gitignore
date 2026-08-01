@@ -1,0 +1,23 @@
+/target
+/result
+/hashdrills
+hashdrills.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.envrc
+*.pem
+*.key
+.DS_Store
+._*

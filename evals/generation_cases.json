@@ -1,0 +1,98 @@
+[
+  {
+    "id": "gen_math_modular_inverse",
+    "domain": "math",
+    "goal": null,
+    "question_template": "Find the least positive x such that ax ≡ 1 (mod m), where a = {{choose an integer from 2 through 10; digits only}} and m = {{choose 11, 13, 17, or 19; coordinate with a so m > a; digits only; do not reveal x}}.",
+    "answer_template": "x = {{compute the least positive modular inverse for the exact a and m in Q; digits only}}.",
+    "judge_requirements": "Both Q values obey their constraints; A is Q's exact least positive inverse; Q does not state the inverse value."
+  },
+  {
+    "id": "gen_math_conditional_probability",
+    "domain": "math",
+    "goal": "Use P(A|B) = n(A∩B)/n(B), with fractions reduced.",
+    "question_template": "Use this contingency table:\n\n| | B | ¬B |\n|---|---:|---:|\n| A | {{choose an integer from 1 through 9; digits only}} | {{choose an integer from 1 through 9; digits only}} |\n| ¬A | {{choose an integer from 1 through 9; digits only}} | {{choose an integer from 1 through 9; digits only}} |\n\nWhat is P(A|B)?",
+    "answer_template": "P(A|B) = {{using Q's exact cells, compute top-left divided by top-left plus bottom-left; output one reduced p/q only}}.",
+    "judge_requirements": "Q has four valid cells and does not state the probability answer; A uses the correct B column and is reduced."
+  },
+  {
+    "id": "gen_physics_constant_acceleration",
+    "domain": "physics",
+    "goal": "Use Δx = v₀t + 1/2 at² and v = v₀ + at for one-dimensional constant acceleration.",
+    "question_template": "A cart has v₀ = {{choose an integer from 2 through 8; digits only}} m/s and constant a = {{choose a nonzero integer from -3 through 4; coordinate with Q's v₀ and t so final velocity is nonnegative and Δx is integral; integer text, using `-` only when negative}} m/s² for {{choose an integer from 2 through 6 satisfying the joint constraints; digits only}} s. What is Δx?",
+    "answer_template": "Δx = {{apply the goal's formula to Q's exact v₀, a, and t; decimal integer only}} m.",
+    "judge_requirements": "All three Q values meet the joint constraints; A has the exact displacement and unit; Q does not state the displacement answer."
+  },
+  {
+    "id": "gen_chemistry_balance_equation",
+    "domain": "chemistry",
+    "goal": "Balance by conserving each element. Use only: Al + O₂ → Al₂O₃; Fe + Cl₂ → FeCl₃; C₂H₆ + O₂ → CO₂ + H₂O; KClO₃ → KCl + O₂.",
+    "question_template": "Balance {{select one skeleton from the goal and reproduce it exactly, with no leading stoichiometric coefficients}} using the lowest whole-number coefficients.",
+    "answer_template": "{{balance Q's exact skeleton; put the least positive whole-number coefficient before every formula, including 1; output the equation only}}",
+    "judge_requirements": "Q uses one listed skeleton without leading coefficients; A preserves that skeleton, balances every element, explicitly includes 1, and has coprime coefficients."
+  },
+  {
+    "id": "gen_biology_dna_transcription",
+    "domain": "biology",
+    "goal": "For a DNA template read 3′→5′, transcribe mRNA 5′→3′ with A→U, T→A, C→G, G→C.",
+    "question_template": "Transcribe this DNA template into mRNA: 3′-{{generate three DNA bases; coordinate all Q blocks so the nine-base sequence contains A, C, G, and T; bases only}}-{{generate three more DNA bases under the same joint constraint; bases only}}-{{generate the final three DNA bases under the same joint constraint; bases only}}-5′.",
+    "answer_template": "5′-{{RNA complement of Q's first block using the goal's mapping; three bases only}}-{{RNA complement of Q's second block; three bases only}}-{{RNA complement of Q's third block; three bases only}}-3′.",
+    "judge_requirements": "Q has exactly nine DNA bases and all four symbols; each A block complements the corresponding Q block in order; Q contains no RNA answer."
+  },
+  {
+    "id": "gen_programming_python_aliasing",
+    "domain": "programming",
+    "goal": "Python 3: ys = xs aliases; ys = xs[:] copies; append mutates its referenced list. print separates arguments by one space; lists render like [1, 2]; booleans are True/False.",
+    "question_template": "What does this Python 3 code print?\n```python\n{{choose distinct digits a, b, c from 1 through 9, then emit exactly four lines with the digits substituted: `xs = [a, b]`; either `ys = xs` or `ys = xs[:]`; `ys.append(c)`; `print(xs, ys, ys is xs)`; code only, without fences or output}}\n```",
+    "answer_template": "{{give the exact single stdout line produced by Q under the goal's rules; no code fence or explanation}}",
+    "judge_requirements": "Q is exactly four valid lines with distinct digits and one allowed assignment; A matches the alias/copy branch exactly, including list spacing and Boolean case; Q never includes output."
+  },
+  {
+    "id": "gen_history_source_ledger",
+    "domain": "history",
+    "goal": "Source ledger: Seneca Falls Convention | 1848 | issued the Declaration of Sentiments; Emancipation Proclamation | 1863 | declared enslaved people in rebelling states free; Nineteenth Amendment | 1920 | barred denying U.S. voting rights on account of sex; Brown v. Board of Education | 1954 | held public-school segregation unconstitutional.",
+    "question_template": "For {{choose one source-ledger entry; output its event name only}}, give its year and the ledger's stated result.",
+    "answer_template": "{{give Q's event year from the ledger; digits only}} — {{give only that event's ledger result; add no outside facts}}",
+    "judge_requirements": "Q names exactly one ledger event without its year or result; both A replacements match the same entry; A adds no unsupported detail."
+  },
+  {
+    "id": "gen_literature_device_key",
+    "domain": "literature",
+    "goal": "Source key: All the world's a stage | metaphor | directly equates the world with a stage; Parting is such sweet sorrow | oxymoron | joins the apparently contradictory sweet and sorrow; Full fathom five thy father lies | alliteration | repeats the initial f sound.",
+    "question_template": "In the line “{{choose one source-key line and reproduce it exactly; omit its device and explanation}},” name the primary device and explain briefly.",
+    "answer_template": "{{give only Q's keyed device}} — {{give only Q's keyed explanation}}",
+    "judge_requirements": "Q reproduces one exact keyed line without leaking its label; both A replacements match that same key entry, with the keyed explanation reproduced rather than reinterpreted."
+  },
+  {
+    "id": "gen_visual_art_formal_effect",
+    "domain": "visual-art",
+    "goal": "Source record: Hokusai, Under the Wave off Kanagawa | towering curling wave / tiny distant Fuji | scale tension; Hopper, Nighthawks | bright glass diner / empty dark street | urban isolation; Mondrian, Composition with Red, Blue and Yellow | black orthogonal grid / unequal color blocks | asymmetrical balance.",
+    "question_template": "In {{choose one source-record work; output artist and title only}}, how do {{give exactly that work's two keyed features, joined naturally; omit its effect}} shape the composition?",
+    "answer_template": "{{state that work's keyed effect and connect it concisely to both Q features; add no other visual claims}}",
+    "judge_requirements": "The work and features come from one record; Q omits the effect; A gives the matching keyed effect and may briefly infer how both features support it, but adds no new observable details."
+  },
+  {
+    "id": "gen_language_spanish_negative",
+    "domain": "language",
+    "goal": "Controlled pairs: The scientist→La científica (singular), The musicians→Los músicos (plural); open→abrió/abrieron, close→cerró/cerraron; the window→la ventana, the door→la puerta. Spanish order: subject + no + agreeing verb + object.",
+    "question_template": "Translate into Spanish: “{{choose `The scientist` or `The musicians`; exact English words only}} did not {{choose `open` or `close`; English base verb only}} {{choose `the window` or `the door`; exact English words only}}.”",
+    "answer_template": "{{give the goal's Spanish subject matching Q; exact words only}} no {{give the goal's preterite verb matching Q's verb and subject number; verb only}} {{give the goal's Spanish object matching Q; exact words only}}.",
+    "judge_requirements": "Q is grammatical English and contains no Spanish; all three A replacements align with Q; verb number and accents are correct."
+  },
+  {
+    "id": "gen_practical_capacity_clarification",
+    "domain": "practical",
+    "goal": "Practice a neutral capacity check before accepting same-day work: state current commitments and ask which should move.",
+    "question_template": "{{Write exactly two neutral sentences: name two current commitments, then quote a colleague requesting a third named task by today; do not label motives, name the skill, or suggest a response}} What do you say next?",
+    "answer_template": "Accept any response that states current capacity and asks which named commitment should move; wording may vary. Reject blame, excessive apology, or an unconditional yes. Example: {{write one natural response of at most 25 words using Q's task names and meeting this rubric}}",
+    "judge_requirements": "Q is concrete, neutral, and non-leading; the example refers unambiguously to Q's tasks and meets the rubric; A explicitly permits varied valid wording rather than one exact script."
+  },
+  {
+    "id": "gen_practical_reflect_both_sides",
+    "domain": "practical",
+    "goal": "Practice reflecting both stated pulls before offering advice: name both concrete reasons and ask what matters most now.",
+    "question_template": "A friend says, “{{write one natural 12-22-word first-person sentence with one concrete reason to attend an event and one concrete reason not to; no question, advice request, emotion label, or quotation marks}}” What do you say next?",
+    "answer_template": "Accept any response that reflects both concrete reasons and asks one open question about the friend's priority; wording may vary. Reject advice, diagnosis, or choosing for them. Example: {{write one natural response of at most 25 words tied faithfully to both Q reasons}}",
+    "judge_requirements": "Q contains two distinct observable pulls without naming the skill or answer; the example reflects both reasons faithfully and asks one open question; the rubric allows genuine wording freedom."
+  }
+]
