@@ -30,37 +30,17 @@ hashdrills setup
 If `llm` is missing, setup can install it with uv, pipx, or Homebrew when one
 of those tools is available. It then helps you choose a provider and models.
 
-Create a directory for your drills and add `Multiplication.md`:
-
-```md
-+++
-name = "Bounded multiplication"
-+++
-
-G: Practice exact products of two positive integers from 2 through 12.
-Q: What is {{a multiplication expression with exactly two integer operands from 2 through 12}}?
-A: The response must be mathematically equal to {{the exact integer product of the operands generated in Q}}.
-```
-
-Then check, preview, and practice it:
-
-```sh
-hashdrills check drills
-hashdrills sample drills --count 3
-hashdrills drill drills
-```
-
-The default model is `gpt-5.5-2026-04-23` with reasoning effort `none`.
-Run `llm models --schemas` to see the models available in your installation,
-or pass another one with `--model`.
-
-The repository also includes a varied [example collection](example/):
+From a clone of this repository, try the varied [example collection](example/):
 
 ```sh
 hashdrills check example
 hashdrills sample example --count 1
 hashdrills drill example
 ```
+
+The default model is `gpt-5.5-2026-04-23` with reasoning effort `none`.
+Run `llm models --schemas` to see the models available in your installation,
+or pass another one with `--model`.
 
 ## Drill files
 
