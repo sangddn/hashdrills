@@ -171,11 +171,11 @@ impl UserConfig {
             .as_file()
             .sync_all()
             .map_err(|error| io_context("sync temporary configuration for", path, error))?;
-        temporary
+        let persisted = temporary
             .persist(path)
             .map_err(|error| io_context("replace", path, error.error))?;
-        File::open(path)
-            .and_then(|file| file.sync_all())
+        persisted
+            .sync_all()
             .map_err(|error| io_context("sync", path, error))?;
         sync_directory(parent)?;
         Ok(())
