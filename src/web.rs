@@ -743,7 +743,7 @@ fn with_security_headers(mut response: Response, access: &AccessControl) -> Resp
     if !headers.contains_key(CACHE_CONTROL) {
         headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
-    headers.insert(REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    headers.insert(REFERRER_POLICY, HeaderValue::from_static("strict-origin"));
     headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
     headers.insert(X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     headers.insert(
@@ -2442,13 +2442,14 @@ fn question_card(
     csrf_token: &str,
     base_path: &str,
 ) -> Markup {
+    let question_classes = question_classes(&frozen.instance.question);
     html! {
         section class="card" {
             (deck_header(&frozen.spec))
             @if let Some(notice) = notice {
                 div class="notice error" role="alert" { (notice) }
             }
-            div class="question rich-text" {
+            div class=(question_classes) {
                 (PreEscaped(render_markdown(
                     &frozen.instance.question,
                     collection_root,
@@ -2470,6 +2471,18 @@ fn question_card(
                 }
             }
         }
+    }
+}
+
+fn question_classes(question: &str) -> &'static str {
+    let visible_units = question
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .count();
+    match visible_units {
+        0..=240 => "question rich-text",
+        241..=500 => "question question-long rich-text",
+        _ => "question question-very-long rich-text",
     }
 }
 
@@ -3137,6 +3150,8 @@ header { display: flex; align-items: baseline; justify-content: space-between; m
 .question, .response, .reference { overflow-wrap: anywhere; line-height: 1.55; }
 .response { white-space: pre-wrap; }
 .question { font-size: clamp(1.55rem, 4vw, 2.25rem); font-weight: 700; line-height: 1.35; margin-bottom: 2rem; }
+.question.question-long { font-size: clamp(1.35rem, 3.2vw, 1.9rem); }
+.question.question-very-long { font-size: clamp(1.15rem, 2.6vw, 1.55rem); line-height: 1.45; }
 .question.compact { font-size: clamp(1.2rem, 2.5vw, 1.5rem); line-height: 1.4; padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); }
 .result-question { margin-bottom: .8rem; padding-bottom: 0; border-bottom: 0; }
 .goal { margin: 0 0 1.4rem; text-align: left; }
@@ -4996,7 +5011,7 @@ mod tests {
                 .unwrap()
                 .to_str()
                 .unwrap(),
-            "no-referrer"
+            "strict-origin"
         );
         assert!(bootstrap.headers().contains_key(CONTENT_SECURITY_POLICY));
         let cookie = set_cookie.split(';').next().unwrap().to_string();
@@ -5035,6 +5050,10 @@ mod tests {
             .await
             .unwrap();
         let question_status = question.status();
+        assert_eq!(
+            question.headers()[REFERRER_POLICY],
+            HeaderValue::from_static("strict-origin")
+        );
         let question = question.text().await.unwrap();
         assert_eq!(
             question_status,
@@ -5156,6 +5175,16 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(missing_origin.status(), StatusCode::FORBIDDEN);
+
+        let null_origin = client
+            .post(format!("{}answer", app.root_url))
+            .header(reqwest::header::COOKIE, &cookie)
+            .header(reqwest::header::ORIGIN, "null")
+            .form(&answer_form)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(null_origin.status(), StatusCode::FORBIDDEN);
 
         let wrong_csrf_form = [
             ("csrf_token", "wrong"),
@@ -5369,6 +5398,8 @@ mod tests {
         assert!(STYLES.contains(".edit-answer { margin-top: 1.75rem; }"));
         assert!(STYLES.contains(".deck { display: inline-block"));
         assert!(STYLES.contains(".goal { margin: 0 0 1.4rem"));
+        assert!(STYLES.contains(".question.question-long"));
+        assert!(STYLES.contains(".question.question-very-long"));
         assert!(STYLES.contains(
             ".result-question { margin-bottom: .8rem; padding-bottom: 0; border-bottom: 0; }"
         ));
@@ -5378,6 +5409,23 @@ mod tests {
         assert!(STYLES.contains("#216e39"));
         assert!(!STYLES.contains(".card { background: #fff; border: 2px"));
         assert!(!STYLES.contains("outline: 3px solid #111"));
+    }
+
+    #[test]
+    fn question_typography_scales_with_visible_length() {
+        assert_eq!(question_classes(&"x".repeat(240)), "question rich-text");
+        assert_eq!(
+            question_classes(&"x".repeat(241)),
+            "question question-long rich-text"
+        );
+        assert_eq!(
+            question_classes(&format!("{}   \n\t", "x".repeat(500))),
+            "question question-long rich-text"
+        );
+        assert_eq!(
+            question_classes(&"x".repeat(501)),
+            "question question-very-long rich-text"
+        );
     }
 
     #[test]
