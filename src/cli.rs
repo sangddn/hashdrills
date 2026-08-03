@@ -31,6 +31,7 @@ use clap::ValueEnum;
 use serde::Serialize;
 
 use crate::archive::prepare_archive_directory;
+use crate::config::UserConfig;
 use crate::error::ErrorReport;
 use crate::error::Fallible;
 use crate::error::fail;
@@ -58,6 +59,8 @@ use crate::model::ReasoningEffort;
 use crate::model::SchemaMode;
 use crate::selection::Selection;
 use crate::selection::select_specs;
+use crate::setup::SetupArgs;
+use crate::setup::run as run_setup;
 use crate::spec::DrillSpec;
 use crate::spec::parse_path;
 use crate::storage::Storage;
@@ -67,8 +70,8 @@ use crate::types::performance::Performance;
 use crate::web::ServerConfig;
 use crate::web::start_server;
 
-const DEFAULT_MODEL: &str = "gpt-5.5-2026-04-23";
-const DEFAULT_MODEL_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::None;
+pub(crate) const DEFAULT_MODEL: &str = "gpt-5.5-2026-04-23";
+pub(crate) const DEFAULT_MODEL_REASONING_EFFORT: ReasoningEffort = ReasoningEffort::None;
 const DEFAULT_JUDGE_MODEL: &str = "gpt-5.6-sol";
 const MAX_CUSTOMIZATION_FILE_BYTES: u64 = 64 * 1024;
 
@@ -106,26 +109,34 @@ impl From<SelectionArgs> for Selection {
 /// Provider-specific behavior belongs in repeatable `KEY=VALUE` options, so
 /// installed OpenAI, OpenRouter, Ollama, and local-provider plugins remain the
 /// authority for their own settings.
-#[derive(Args, Clone, Debug)]
+#[derive(Args, Clone, Debug, Default)]
 struct CommonLlmArgs {
-    /// Fallback model for generation and evaluation; the built-in default uses `none` reasoning.
-    #[arg(long, default_value = DEFAULT_MODEL)]
-    model: String,
+    /// Override the saved fallback model for generation and evaluation.
+    #[arg(long)]
+    model: Option<String>,
     /// Provider option passed as process arguments to both stages; never put credentials here.
     #[arg(long = "llm-option", value_name = "KEY=VALUE")]
     llm_option: Vec<LlmOption>,
-    /// Send the JSON schema natively, or include it in the prompt.
-    #[arg(long, default_value_t = SchemaMode::default())]
-    schema_mode: SchemaMode,
+    /// Override how JSON schemas are sent to the provider.
+    #[arg(long)]
+    schema_mode: Option<SchemaMode>,
     /// Override the safely PATH-resolved `llm` executable. The selected path runs as local code.
     #[arg(long)]
     llm_executable: Option<OsString>,
     /// Maximum duration of each model request, in seconds.
     #[arg(
         long,
-        default_value_t = DEFAULT_TIMEOUT.as_secs(),
         value_parser = clap::value_parser!(u64).range(1..)
     )]
+    llm_timeout: Option<u64>,
+}
+
+#[derive(Clone, Debug)]
+struct ResolvedCommonLlmArgs {
+    model: String,
+    llm_option: Vec<LlmOption>,
+    schema_mode: SchemaMode,
+    llm_executable: Option<OsString>,
     llm_timeout: u64,
 }
 
@@ -243,6 +254,11 @@ struct Cli {
 // derive surface without reducing steady-state memory.
 #[allow(clippy::large_enum_variant)]
 enum Command {
+    /// Install, inspect, test, or change model-provider configuration.
+    Setup {
+        #[command(flatten)]
+        args: SetupArgs,
+    },
     /// Validate authored drill specifications without opening the database.
     Check {
         /// Markdown file or collection directory. Defaults to the current directory.
@@ -384,6 +400,7 @@ pub async fn entrypoint() -> Fallible<()> {
 
 async fn run(cli: Cli) -> Fallible<()> {
     match cli.command {
+        Command::Setup { args } => run_setup(args).await,
         Command::Check { path } => check(path),
         Command::Sample {
             path,
@@ -480,9 +497,10 @@ async fn eval_answers(
     }
     .map_err(eval_error)?;
     validate_case_selection(&run.case_ids, cases.iter().map(|case| case.id.as_str()))?;
+    let config = UserConfig::load()?;
+    let (common, _, evaluation) = resolve_scoped_llm_args(common, None, Some(evaluation), &config);
     let call_timeout = Duration::from_secs(common.llm_timeout);
-    let backend: Arc<dyn ModelBackend> =
-        Arc::new(build_scoped_backend(common, None, Some(evaluation))?);
+    let backend: Arc<dyn ModelBackend> = Arc::new(build_scoped_backend(common, None, evaluation)?);
     let report = run_evaluation_suite(&cases, backend, run.to_config(call_timeout))
         .await
         .map_err(eval_error)?;
@@ -508,6 +526,8 @@ async fn eval_generation(
     }
     .map_err(eval_error)?;
     validate_case_selection(&run.case_ids, cases.iter().map(|case| case.id.as_str()))?;
+    let config = UserConfig::load()?;
+    let (common, generation, _) = resolve_scoped_llm_args(common, Some(generation), None, &config);
     let call_timeout = Duration::from_secs(common.llm_timeout);
     let judge_concurrency = judge_args.judge_concurrency;
     let judge = if skip_judge {
@@ -515,7 +535,7 @@ async fn eval_generation(
     } else {
         Some(Arc::new(build_judge_backend(&common, judge_args)?))
     };
-    let candidate = Arc::new(build_scoped_backend(common, Some(generation), None)?);
+    let candidate = Arc::new(build_scoped_backend(common, generation, None)?);
     let report = run_generation_suite(
         &cases,
         candidate,
@@ -590,7 +610,9 @@ async fn sample(
     // Selection is resolved before constructing a backend. A typo must never
     // reach a provider or create collection state.
     let specs = selected_specs(&specs, &path, selection, true)?;
-    let backend = build_scoped_backend(common, Some(generation), None)?;
+    let config = UserConfig::load()?;
+    let (common, generation, _) = resolve_scoped_llm_args(common, Some(generation), None, &config);
+    let backend = build_scoped_backend(common, generation, None)?;
     let mut records = Vec::with_capacity(specs.len().saturating_mul(count));
 
     for spec in &specs {
@@ -641,7 +663,8 @@ async fn drill(
     let save_generated = validate_archive_directory(save_generated, &canonical_root)?
         .map(prepare_archive_directory)
         .transpose()?;
-    let backend = build_backend(llm)?;
+    let config = UserConfig::load()?;
+    let backend = build_backend(llm, &config)?;
     let storage = Storage::open(root)?;
 
     let config = ServerConfig {
@@ -841,11 +864,20 @@ fn selected_specs(
     Ok(selected.into_iter().cloned().collect())
 }
 
-fn build_backend(args: LlmArgs) -> Fallible<LlmBackend> {
-    build_scoped_backend(args.common, Some(args.generation), Some(args.evaluation))
+fn build_backend(args: LlmArgs, config: &UserConfig) -> Fallible<LlmBackend> {
+    let (common, generation, evaluation) = resolve_scoped_llm_args(
+        args.common,
+        Some(args.generation),
+        Some(args.evaluation),
+        config,
+    );
+    build_scoped_backend(common, generation, evaluation)
 }
 
-fn build_judge_backend(common: &CommonLlmArgs, judge: JudgeLlmArgs) -> Fallible<LlmBackend> {
+fn build_judge_backend(
+    common: &ResolvedCommonLlmArgs,
+    judge: JudgeLlmArgs,
+) -> Fallible<LlmBackend> {
     validate_model_argument("--judge-model", &judge.judge_model)?;
     if common
         .llm_option
@@ -868,13 +900,13 @@ fn build_judge_backend(common: &CommonLlmArgs, judge: JudgeLlmArgs) -> Fallible<
 }
 
 fn build_scoped_backend(
-    common: CommonLlmArgs,
+    common: ResolvedCommonLlmArgs,
     generation: Option<GenerationLlmArgs>,
     evaluation: Option<EvaluationLlmArgs>,
 ) -> Fallible<LlmBackend> {
     let generation_enabled = generation.is_some();
     let evaluation_enabled = evaluation.is_some();
-    let CommonLlmArgs {
+    let ResolvedCommonLlmArgs {
         model,
         llm_option,
         schema_mode,
@@ -1030,6 +1062,73 @@ fn build_scoped_backend(
         backend = backend.with_evaluation_prompt_template(value);
     }
     Ok(backend)
+}
+
+fn resolve_scoped_llm_args(
+    common: CommonLlmArgs,
+    generation: Option<GenerationLlmArgs>,
+    evaluation: Option<EvaluationLlmArgs>,
+    config: &UserConfig,
+) -> (
+    ResolvedCommonLlmArgs,
+    Option<GenerationLlmArgs>,
+    Option<EvaluationLlmArgs>,
+) {
+    let cli_common_model = common.model.is_some();
+    let mut generation = generation;
+    let mut evaluation = evaluation;
+
+    if let Some(stage) = &mut generation {
+        if stage.generation_model.is_none() && !cli_common_model {
+            stage.generation_model = config.generation_model.clone();
+        }
+        if stage.generation_reasoning_effort.is_none()
+            && !common
+                .llm_option
+                .iter()
+                .chain(&stage.generation_llm_option)
+                .any(|option| option.key() == "reasoning_effort")
+        {
+            stage.generation_reasoning_effort = config.generation_reasoning_effort;
+        }
+    }
+    if let Some(stage) = &mut evaluation {
+        if stage.evaluation_model.is_none() && !cli_common_model {
+            stage.evaluation_model = config.evaluation_model.clone();
+        }
+        if stage.evaluation_reasoning_effort.is_none()
+            && !common
+                .llm_option
+                .iter()
+                .chain(&stage.evaluation_llm_option)
+                .any(|option| option.key() == "reasoning_effort")
+        {
+            stage.evaluation_reasoning_effort = config.evaluation_reasoning_effort;
+        }
+    }
+
+    let resolved = ResolvedCommonLlmArgs {
+        model: common
+            .model
+            .or_else(|| config.model.clone())
+            .unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+        llm_option: common.llm_option,
+        schema_mode: common
+            .schema_mode
+            .or(config.schema_mode)
+            .unwrap_or_default(),
+        llm_executable: common.llm_executable,
+        llm_timeout: common
+            .llm_timeout
+            .or(config.llm_timeout)
+            .unwrap_or(DEFAULT_TIMEOUT.as_secs()),
+    };
+    (resolved, generation, evaluation)
+}
+
+#[cfg(test)]
+fn resolve_common_llm_args(common: CommonLlmArgs) -> ResolvedCommonLlmArgs {
+    resolve_scoped_llm_args(common, None, None, &UserConfig::default()).0
 }
 
 fn effective_reasoning_effort(
@@ -1531,11 +1630,11 @@ mod tests {
             } => {
                 assert_eq!(path, Some(PathBuf::from("drills.md")));
                 assert_eq!(count, 3);
-                assert_eq!(common.model, DEFAULT_MODEL);
+                assert_eq!(common.model, None);
                 assert!(common.llm_option.is_empty());
-                assert_eq!(common.schema_mode, SchemaMode::Native);
+                assert_eq!(common.schema_mode, None);
                 assert_eq!(common.llm_executable, None);
-                assert_eq!(common.llm_timeout, DEFAULT_TIMEOUT.as_secs());
+                assert_eq!(common.llm_timeout, None);
                 assert_eq!(generation.generation_model, None);
                 assert_eq!(generation.generation_reasoning_effort, None);
                 assert_eq!(selection, SelectionArgs::default());
@@ -1550,7 +1649,7 @@ mod tests {
         let cli = Cli::try_parse_from(["hashdrills", "drill", "drills.md"]).unwrap();
         match cli.command {
             Command::Drill { llm, .. } => {
-                assert_eq!(llm.common.model, DEFAULT_MODEL);
+                assert_eq!(llm.common.model, None);
                 assert_eq!(llm.generation.generation_reasoning_effort, None);
                 assert_eq!(llm.evaluation.evaluation_reasoning_effort, None);
             }
@@ -1594,7 +1693,8 @@ mod tests {
             panic!("expected sample")
         };
         assert_eq!(common.llm_executable, None);
-        let backend = build_scoped_backend(common, Some(generation), None).unwrap();
+        let backend =
+            build_scoped_backend(resolve_common_llm_args(common), Some(generation), None).unwrap();
         assert!(
             format!("{backend:?}").contains("resolve_executable_from_path: true"),
             "omitting --llm-executable must retain safe PATH resolution"
@@ -1681,7 +1781,7 @@ mod tests {
                 no_auth,
             } => {
                 assert_eq!(path, Some(PathBuf::from(".")));
-                assert_eq!(llm.common.model, "fallback-model");
+                assert_eq!(llm.common.model.as_deref(), Some("fallback-model"));
                 assert_eq!(
                     llm.generation.generation_model.as_deref(),
                     Some("generator-model")
@@ -1703,12 +1803,12 @@ mod tests {
                 assert_eq!(llm.common.llm_option[0].value(), "0.2");
                 assert_eq!(llm.generation.generation_llm_option[0].value(), "0.8");
                 assert_eq!(llm.evaluation.evaluation_llm_option[0].key(), "json_object");
-                assert_eq!(llm.common.schema_mode, SchemaMode::Prompt);
+                assert_eq!(llm.common.schema_mode, Some(SchemaMode::Prompt));
                 assert_eq!(
                     llm.common.llm_executable,
                     Some(OsString::from("/opt/bin/llm"))
                 );
-                assert_eq!(llm.common.llm_timeout, 45);
+                assert_eq!(llm.common.llm_timeout, Some(45));
                 assert_eq!(new_drill_limit, Some(2));
                 assert_eq!(drill_limit, Some(8));
                 assert_eq!(selection.include_deck, ["Physics", "Chemistry"]);
@@ -1742,7 +1842,7 @@ mod tests {
             panic!("expected answer eval")
         };
         assert_eq!(cases, None);
-        assert_eq!(common.model, DEFAULT_MODEL);
+        assert_eq!(common.model, None);
         assert_eq!(evaluation.evaluation_model, None);
         assert_eq!(evaluation.evaluation_reasoning_effort, None);
         assert_eq!(run.repeats, 1);
@@ -1817,7 +1917,7 @@ mod tests {
             panic!("expected generation eval")
         };
         assert_eq!(cases, Some(PathBuf::from("cases.json")));
-        assert_eq!(common.model, "candidate-fallback");
+        assert_eq!(common.model.as_deref(), Some("candidate-fallback"));
         assert_eq!(
             generation.generation_model.as_deref(),
             Some("candidate-model")
@@ -1994,7 +2094,7 @@ mod tests {
         else {
             panic!("expected sample")
         };
-        let error = build_scoped_backend(common, Some(generation), None)
+        let error = build_scoped_backend(resolve_common_llm_args(common), Some(generation), None)
             .unwrap_err()
             .to_string();
         assert!(error.contains("conflicts"), "{error}");
@@ -2017,10 +2117,125 @@ mod tests {
         let Command::Drill { llm, .. } = cli.command else {
             panic!("expected drill")
         };
-        let backend = build_backend(llm).unwrap();
+        let backend = build_backend(llm, &UserConfig::default()).unwrap();
         assert_eq!(backend.model(), "fallback");
         assert_eq!(backend.generation_model(), "generator");
         assert_eq!(backend.evaluation_model(), "judge");
+    }
+
+    #[test]
+    fn effective_config_precedence_is_layered() {
+        let config = UserConfig {
+            model: Some("configured".to_string()),
+            generation_model: Some("configured-generation".to_string()),
+            evaluation_model: Some("configured-evaluation".to_string()),
+            schema_mode: Some(SchemaMode::Prompt),
+            llm_timeout: Some(77),
+            ..UserConfig::default()
+        };
+
+        let resolve = |common: CommonLlmArgs,
+                       generation: GenerationLlmArgs,
+                       evaluation: EvaluationLlmArgs| {
+            resolve_scoped_llm_args(common, Some(generation), Some(evaluation), &config)
+        };
+
+        let (common, generation, evaluation) = resolve(
+            CommonLlmArgs::default(),
+            GenerationLlmArgs::default(),
+            EvaluationLlmArgs::default(),
+        );
+        assert_eq!(common.model, "configured");
+        assert_eq!(common.schema_mode, SchemaMode::Prompt);
+        assert_eq!(common.llm_timeout, 77);
+        assert_eq!(
+            generation.unwrap().generation_model.as_deref(),
+            Some("configured-generation")
+        );
+        assert_eq!(
+            evaluation.unwrap().evaluation_model.as_deref(),
+            Some("configured-evaluation")
+        );
+
+        let (common, generation, evaluation) = resolve(
+            CommonLlmArgs {
+                model: Some("cli-common".to_string()),
+                schema_mode: Some(SchemaMode::Native),
+                llm_timeout: Some(9),
+                ..CommonLlmArgs::default()
+            },
+            GenerationLlmArgs::default(),
+            EvaluationLlmArgs::default(),
+        );
+        assert_eq!(common.model, "cli-common");
+        assert_eq!(common.schema_mode, SchemaMode::Native);
+        assert_eq!(common.llm_timeout, 9);
+        assert_eq!(generation.unwrap().generation_model, None);
+        assert_eq!(evaluation.unwrap().evaluation_model, None);
+
+        let (common, generation, evaluation) = resolve(
+            CommonLlmArgs {
+                model: Some("cli-common".to_string()),
+                ..CommonLlmArgs::default()
+            },
+            GenerationLlmArgs {
+                generation_model: Some("cli-generation".to_string()),
+                ..GenerationLlmArgs::default()
+            },
+            EvaluationLlmArgs::default(),
+        );
+        assert_eq!(common.model, "cli-common");
+        assert_eq!(
+            generation.unwrap().generation_model.as_deref(),
+            Some("cli-generation")
+        );
+        assert_eq!(evaluation.unwrap().evaluation_model, None);
+
+        let (_, generation, evaluation) = resolve(
+            CommonLlmArgs::default(),
+            GenerationLlmArgs::default(),
+            EvaluationLlmArgs {
+                evaluation_model: Some("cli-evaluation".to_string()),
+                ..EvaluationLlmArgs::default()
+            },
+        );
+        assert_eq!(
+            generation.unwrap().generation_model.as_deref(),
+            Some("configured-generation")
+        );
+        assert_eq!(
+            evaluation.unwrap().evaluation_model.as_deref(),
+            Some("cli-evaluation")
+        );
+    }
+
+    #[test]
+    fn configured_custom_model_does_not_inherit_the_builtin_reasoning_default() {
+        let config = UserConfig {
+            model: Some("local/custom".to_string()),
+            ..UserConfig::default()
+        };
+        let (common, generation, _) = resolve_scoped_llm_args(
+            CommonLlmArgs::default(),
+            Some(GenerationLlmArgs::default()),
+            None,
+            &config,
+        );
+        let generation = generation.unwrap();
+        assert_eq!(generation.generation_reasoning_effort, None);
+        assert_eq!(
+            effective_reasoning_effort(
+                true,
+                generation
+                    .generation_model
+                    .as_deref()
+                    .unwrap_or(common.model.as_str()),
+                generation.generation_reasoning_effort,
+                &common.llm_option,
+                &generation.generation_llm_option,
+            ),
+            None
+        );
     }
 
     #[test]
@@ -2051,7 +2266,7 @@ mod tests {
         else {
             panic!("expected sample")
         };
-        build_scoped_backend(common, Some(generation), None).unwrap();
+        build_scoped_backend(resolve_common_llm_args(common), Some(generation), None).unwrap();
 
         fs::write(&template, "missing the required placeholder").unwrap();
         let cli = Cli::try_parse_from([
@@ -2068,7 +2283,7 @@ mod tests {
         else {
             panic!("expected sample")
         };
-        let error = build_scoped_backend(common, Some(generation), None)
+        let error = build_scoped_backend(resolve_common_llm_args(common), Some(generation), None)
             .unwrap_err()
             .to_string();
         assert!(error.contains("must contain {{input_json}}"), "{error}");
@@ -2090,7 +2305,7 @@ mod tests {
         else {
             panic!("expected sample")
         };
-        let error = build_scoped_backend(common, Some(generation), None)
+        let error = build_scoped_backend(resolve_common_llm_args(common), Some(generation), None)
             .unwrap_err()
             .to_string();
         assert!(

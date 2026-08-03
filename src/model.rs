@@ -148,7 +148,8 @@ impl GenerationQualityJudgment {
 ///
 /// Provider support still varies by model. Hashdrills exposes only the values
 /// accepted by the installed `llm` 0.31.1 boundary and never aliases `max`.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
     #[default]
     None,
@@ -197,7 +198,8 @@ impl FromStr for ReasoningEffort {
 /// appends the same exact schema to the user prompt for providers that can
 /// produce JSON but do not implement `llm`'s native schema capability. Both
 /// modes use the same strict local response parser.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SchemaMode {
     #[default]
     Native,
@@ -952,6 +954,10 @@ impl LlmBackend {
 }
 
 fn resolve_default_executable() -> Result<PathBuf, ModelError> {
+    resolve_safe_executable(OsStr::new("llm"))
+}
+
+pub(crate) fn resolve_safe_executable(name: &OsStr) -> Result<PathBuf, ModelError> {
     // This prevents ambient current-directory execution; it does not turn a
     // user-writable PATH directory into a trust boundary or eliminate the
     // ordinary pathname replacement race between lookup and process spawn.
@@ -961,7 +967,7 @@ fn resolve_default_executable() -> Result<PathBuf, ModelError> {
         .ok()
         .and_then(|directory| directory.canonicalize().ok());
     resolve_executable_in_path(
-        OsStr::new("llm"),
+        name,
         path.as_deref(),
         path_extensions.as_deref(),
         current_directory.as_deref(),

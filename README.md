@@ -18,45 +18,29 @@ A few principles:
 
 ## Quick start
 
-Hashdrills requires Rust 1.97 or newer and [Simon Willison's `llm` CLI][llm].
+Hashdrills requires Rust 1.97 or newer and uses [Simon Willison's `llm`
+CLI][llm] to reach model providers. Install Hashdrills, then run its setup
+wizard:
 
 ```sh
 cargo install --git https://github.com/sangddn/hashdrills --locked
-uv tool install llm
-llm keys set openai
+hashdrills setup
 ```
 
-Create a directory for your drills and add `Multiplication.md`:
+If `llm` is missing, setup can install it with uv, pipx, or Homebrew when one
+of those tools is available. It then helps you choose a provider and models.
 
-```md
-+++
-name = "Bounded multiplication"
-+++
-
-G: Practice exact products of two positive integers from 2 through 12.
-Q: What is {{a multiplication expression with exactly two integer operands from 2 through 12}}?
-A: The response must be mathematically equal to {{the exact integer product of the operands generated in Q}}.
-```
-
-Then check, preview, and practice it:
-
-```sh
-hashdrills check drills
-hashdrills sample drills --count 3
-hashdrills drill drills
-```
-
-The default model is `gpt-5.5-2026-04-23` with reasoning effort `none`.
-Run `llm models --schemas` to see the models available in your installation,
-or pass another one with `--model`.
-
-The repository also includes a varied [example collection](example/):
+From a clone of this repository, try the varied [example collection](example/):
 
 ```sh
 hashdrills check example
 hashdrills sample example --count 1
 hashdrills drill example
 ```
+
+The default model is `gpt-5.5-2026-04-23` with reasoning effort `none`.
+Run `llm models --schemas` to see the models available in your installation,
+or pass another one with `--model`.
 
 ## Drill files
 
@@ -159,6 +143,7 @@ does not.
 
 | Command | Purpose |
 | --- | --- |
+| `hashdrills setup` | Install or configure `llm`, save model defaults, inspect readiness, or test the connection. |
 | `hashdrills check [PATH]` | Validate a collection or one Markdown file without calling a model. |
 | `hashdrills sample [PATH] --count N` | Preview generated questions and answers without changing review history. |
 | `hashdrills drill [COLLECTION]` | Start a review session in the local web app. |
@@ -198,6 +183,57 @@ are `--new-card-limit` and `--card-limit`.
 ## Models and providers
 
 Hashdrills uses the model IDs and provider plugins configured in `llm`.
+
+Run `hashdrills setup` again whenever you want to change providers or model
+defaults. The wizard can help install `llm` and provider plugins, hand off key
+entry directly to `llm`, list available models, and optionally verify the
+result.
+
+For a read-only readiness report, use:
+
+```sh
+hashdrills setup --check
+hashdrills setup --check --format json
+```
+
+`--check` sends no inference or prompt request; installed `llm` plugins still
+own their model-discovery behavior. `hashdrills setup --test` makes one
+generation request and one evaluation request through the configured models.
+Those two requests may incur a small provider charge.
+
+Setup can also be scripted. These flags save non-secret user defaults; omitted
+settings are left unchanged:
+
+```sh
+hashdrills setup \
+  --model gpt-5.5-2026-04-23 \
+  --generation-model generator-model \
+  --evaluation-model evaluator-model \
+  --generation-reasoning-effort none \
+  --evaluation-reasoning-effort low \
+  --schema-mode native \
+  --llm-timeout 120
+```
+
+`--model` is the shared fallback, while the stage-specific model flags override
+it for generation or evaluation. The reasoning flags set each stage's effort.
+`--schema-mode` accepts `native` or `prompt`. To remove all saved Hashdrills
+defaults, run `hashdrills setup --reset`; add `--yes` for non-interactive use.
+
+For normal model-backed commands, explicit command-line flags override the
+user configuration, which overrides Hashdrills' built-in defaults. The user
+configuration is stored at:
+
+- macOS: `~/Library/Application Support/hashdrills/config.toml`
+- Linux and other Unix systems: `$XDG_CONFIG_HOME/hashdrills/config.toml`, or
+  `~/.config/hashdrills/config.toml` when `XDG_CONFIG_HOME` is unset
+- Windows: `%APPDATA%\hashdrills\config.toml`
+
+Set `HASHDRILLS_CONFIG` to an absolute file path to use a different location.
+Hashdrills never stores provider keys, plugin state, alias definitions, or
+endpoints. Those remain owned by `llm`; when the wizard offers key setup, it
+runs `llm keys set` and does not read the key itself. A selected model ID or
+alias string may itself be saved as a Hashdrills default.
 
 The default generation and grading model is `gpt-5.5-2026-04-23` with
 reasoning effort `none`. Other models use their provider's default reasoning
